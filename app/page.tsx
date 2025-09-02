@@ -13,7 +13,7 @@ export default function Home() {
   useEffect(() => {
     setMounted(true);
   }, []);
-
+// sdffe
   useEffect(() => {
     if (mounted && isAuthenticated && !isLoading) {
       router.push("/home");
