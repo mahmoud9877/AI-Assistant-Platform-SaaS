@@ -5,18 +5,18 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useCallback,
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "@/hooks/use-toast";
 
-// نوع بيانات المستخدم
 type User = {
   id: string;
   name: string;
   email: string;
 };
 
-// نوع بيانات الكونتكست
 type AuthContextType = {
   user: User | null;
   isLoading: boolean;
@@ -25,76 +25,90 @@ type AuthContextType = {
   logout: () => void;
 };
 
+// Helper functions for localStorage
+const getStoredUser = (): User | null => {
+  try {
+    const stored = localStorage.getItem("eve-user");
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    localStorage.removeItem("eve-user");
+    return null;
+  }
+};
+
+const setStoredUser = (user: User, token: string) => {
+  localStorage.setItem("eve-user", JSON.stringify(user));
+  localStorage.setItem("token", token);
+};
+
+const removeStoredUser = () => {
+  localStorage.removeItem("eve-user");
+  localStorage.removeItem("token");
+};
+
 // إنشاء الكونتكست
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoading: true,
   isAuthenticated: false,
   login: async () => false,
-  logout: () => {},
+  logout: () => { },
 });
 
 // كومبوننت المزود (Provider)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
-  // التحقق من وجود يوزر محفوظ
   useEffect(() => {
-    const checkAuth = () => {
-      try {
-        const storedUser = localStorage.getItem("eve-user");
-        if (storedUser) {
-          setUser(JSON.parse(storedUser));
-        }
-      } catch (error) {
-        console.error("Failed to parse stored user:", error);
-        localStorage.removeItem("eve-user");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (typeof window !== "undefined") {
-      checkAuth();
-    } else {
-      setIsLoading(false);
-    }
+    setMounted(true);
   }, []);
 
-  // تسجيل الدخول
-  const login = async (email: string, password: string): Promise<boolean> => {
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/auth/login`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        }
-      );
+  // التحقق من وجود يوزر محفوظ بعد التأكد من التصفح على client
+  useEffect(() => {
+    if (!mounted) return;
+    const storedUser = getStoredUser();
+    if (storedUser) setUser(storedUser);
+    setIsLoading(false);
+  }, [mounted]);
 
-      if (!response.ok) return false;
-      const responseData = await response.json();
-      const user = responseData.user;
-      const token = responseData.token;
-      setUser(user);
-      localStorage.setItem("eve-user", JSON.stringify(user));
-      localStorage.setItem("token", token);
+  // تسجيل الدخول
+  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        toast({ title: "Login Failed", description: "Invalid email or password", variant: "destructive" });
+        return false;
+      }
+
+      const responseData: { user: User; token: string } = await response.json();
+      setUser(responseData.user);
+      setStoredUser(responseData.user, responseData.token);
       return true;
     } catch (error) {
       console.error("Login error:", error);
+      toast({ title: "Login Error", description: "Something went wrong", variant: "destructive" });
       return false;
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(() => {
     setUser(null);
-    localStorage.removeItem("token");
-    localStorage.removeItem("eve-user");
+    removeStoredUser();
     router.push("/");
-  };
+  }, [router]);
+
+  if (!mounted) {
+    // ✅ منع مشاكل SSR/Hydration
+    return null;
+  }
 
   return (
     <AuthContext.Provider
@@ -116,7 +130,7 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
-// لحماية الصفحات
+// HOC لحماية الصفحات
 export function withAuth(Component: React.ComponentType<any>) {
   return function ProtectedRoute(props: any) {
     const { isAuthenticated, isLoading } = useAuth();
@@ -124,21 +138,19 @@ export function withAuth(Component: React.ComponentType<any>) {
 
     useEffect(() => {
       if (!isLoading && !isAuthenticated) {
-        router.push("/");
+        router.push("/"); // ممكن تحط redirect للصفحة المطلوبة بعد login
       }
     }, [isLoading, isAuthenticated, router]);
 
     if (isLoading) {
       return (
         <div className="min-h-screen flex items-center justify-center">
-          <div className="text-xl">Loading...</div>
+          <div className="text-xl animate-pulse">Loading...</div>
         </div>
       );
     }
 
-    if (!isAuthenticated) {
-      return null;
-    }
+    if (!isAuthenticated) return null;
 
     return <Component {...props} />;
   };

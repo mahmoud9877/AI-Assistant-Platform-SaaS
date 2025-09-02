@@ -1,20 +1,23 @@
 "use client";
 
-import { ChevronDown, ArrowLeft, Send, Users, Paperclip } from "lucide-react";
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  ArrowLeft,
+  ChevronDown,
+  Paperclip,
+  Send,
+  Loader2,
+} from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/use-toast";
+import { motion } from "framer-motion";
 import { format } from "date-fns";
 
 interface Message {
@@ -36,7 +39,7 @@ interface EveData {
   status?: string;
 }
 
-const ChatWithEve: React.FC = () => {
+const ChatWithEve = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -44,72 +47,69 @@ const ChatWithEve: React.FC = () => {
   const [eveData, setEveData] = useState<EveData | null>(null);
   const [myEmployees, setMyEmployees] = useState<EveData[]>([]);
   const [isFromOffice, setIsFromOffice] = useState(false);
-  const router = useRouter();
   const [eveIsTyping, setEveIsTyping] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const employeeCache = useRef<EveData[] | null>(null);
+  const router = useRouter();
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Auto scroll
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, eveIsTyping]);
+
+  // Load employees
   useEffect(() => {
     const token = localStorage.getItem("token");
-    const storedMessages = localStorage.getItem("chatMessages");
-    if (storedMessages) {
-      setMessages(JSON.parse(storedMessages));
-    }
     if (!token) {
       router.push("/");
       return;
     }
-    const loadEmployees = async () => {
-      if (employeeCache.current) {
-        setMyEmployees(employeeCache.current);
-        return;
-      }
 
+    const loadEmployees = async () => {
       try {
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_BASE_URL}/eve-employee/my-employee`,
           {
             headers: {
-              "Content-Type": "application/json",
               authorization: `employee${token}`,
             },
           }
         );
         const data = await res.json();
-        const { employees } = data;
-        const withFullImagePaths = employees.map((emp: EveData) => ({
+        if (!data.employees) return;
+
+        const withPhotos = data.employees.map((emp: EveData) => ({
           ...emp,
           photoUrl: emp.photoUrl
             ? `${process.env.NEXT_PUBLIC_BASE_URL}${emp.photoUrl}`
             : undefined,
         }));
-
-        setMyEmployees(withFullImagePaths);
-        employeeCache.current = withFullImagePaths;
-      } catch (error) {
-        console.error("Error loading employees:", error);
+        setMyEmployees(withPhotos);
+      } catch (err) {
+        console.error("Error fetching employees:", err);
       }
     };
-    loadEmployees();
-  }, []);
 
+    loadEmployees();
+  }, [router]);
+
+  // Load messages per employee
   useEffect(() => {
     if (eveData?.id) {
-      localStorage.setItem(
-        `chatMessages-${eveData.id}`,
-        JSON.stringify(messages)
-      );
+      const saved = localStorage.getItem(`chat_${eveData.id}`);
+      if (saved) setMessages(JSON.parse(saved));
     }
-  }, [messages, eveData?.id]);
+  }, [eveData]);
 
+  // Save messages on change
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (eveData?.id) {
+      localStorage.setItem(`chat_${eveData.id}`, JSON.stringify(messages));
+    }
+  }, [messages, eveData]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
@@ -117,8 +117,7 @@ const ChatWithEve: React.FC = () => {
   };
 
   const handleSendMessage = async () => {
-    setEveIsTyping(true);
-    await new Promise((res) => setTimeout(res, 500));
+    if (!input.trim() && !file) return;
 
     if (!eveData?.id) {
       toast({
@@ -129,19 +128,14 @@ const ChatWithEve: React.FC = () => {
       return;
     }
 
-    if (!input.trim() && !file) return;
-
-    const localInput = input.trim();
-    const localFile = file;
-
     const timestamp = new Date();
-    const fileText = localFile ? `📎 ${localFile.name}` : "";
-    const combinedContent = [localInput, fileText].filter(Boolean).join(" - ");
+    const localFile = file;
+    const localInput = input.trim();
 
     const userMessage: Message = {
       id: Date.now().toString(),
       sender: "user",
-      content: combinedContent || "Sent a file",
+      content: localInput || "Sent a file",
       timestamp,
       type: localFile ? "file" : "text",
       ...(localFile && {
@@ -153,6 +147,7 @@ const ChatWithEve: React.FC = () => {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setFile(null);
+    setEveIsTyping(true);
     setIsLoading(true);
 
     try {
@@ -163,13 +158,12 @@ const ChatWithEve: React.FC = () => {
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/chat`, {
         method: "POST",
-        headers: {
-          authorization: `employee${localStorage.getItem("token")}`,
-        },
+        headers: { authorization: `employee${localStorage.getItem("token")}` },
         body: formData,
       });
 
       const data = await res.json();
+
       const eveResponse: Message = {
         id: (Date.now() + 1).toString(),
         sender: "eve",
@@ -187,229 +181,178 @@ const ChatWithEve: React.FC = () => {
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
       setEveIsTyping(false);
+      setIsLoading(false);
       if (localFile) {
         URL.revokeObjectURL(userMessage.fileUrl!);
       }
     }
   };
 
-
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-800 text-white font-sans">
-      <div className="bg-white/5 backdrop-blur-md p-4 border-b border-white/10 shadow-sm">
-        <div className="container mx-auto flex items-center justify-between overflow-x-auto">
-          <Button
-            variant="ghost"
-            className="text-white hover:text-white/80 hover:bg-white/10 transition"
-            onClick={() =>
-              router.push(isFromOffice ? "/virtual-office" : "/home")
-            }
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
+    <div className="flex flex-col h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-800 text-white">
+      {/* ===== Header ===== */}
+      <div className="bg-white/5 p-4 border-b border-white/10 flex items-center justify-between">
+        <Button
+          variant="ghost"
+          onClick={() => router.push(isFromOffice ? "/virtual-office" : "/home")}
+          className="text-white hover:bg-white/10"
+        >
+          <ArrowLeft />
+        </Button>
 
-          <div className="flex items-center gap-4 min-w-0">
-            <Avatar className="h-10 w-10 shrink-0">
-              {eveData?.photoUrl ? (
-                <AvatarImage src={eveData.photoUrl} alt="employee avatar" />
-              ) : (
-                <AvatarFallback className="bg-indigo-600 text-white">
-                  {eveData?.name?.charAt(0) || "E"}
-                </AvatarFallback>
-              )}
-            </Avatar>
-            <div className="truncate">
-              <h2 className="text-lg font-semibold truncate text-white">
-                {eveData?.name || "EVE"}
-              </h2>
-              <div className="flex items-center gap-2">
-                <p className="text-sm text-indigo-200 truncate">
-                  {eveData?.department || "AI Assistant"}
-                </p>
-                {eveData?.status && (
-                  <Badge
-                    variant="outline"
-                    className="text-xs border-indigo-400 text-indigo-100"
-                  >
-                    {eveData.status}
-                  </Badge>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 shrink-0">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-white border-white/20 hover:bg-white/10 p-2"
-                >
-                  <ChevronDown className="h-5 w-5" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 bg-white text-black">
-                <h4 className="font-semibold mb-2">Employees List</h4>
-                <ul className="space-y-1 max-h-60 overflow-y-auto">
-                  {myEmployees.length === 0 ? (
-                    <p className="text-sm text-gray-500">No employees found.</p>
-                  ) : (
-                    myEmployees.map((emp) => (
-                      <li
-                        key={emp.id}
-                        className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
-                        onClick={() => {
-                          setEveData(emp);
-                          setMessages([]);
-                          toast({ title: `Now chatting with ${emp.name}` });
-                        }}
-                      >
-                        <p className="font-medium">{emp.name}</p>
-                        <p className="text-xs text-gray-500">
-                          {emp.department}
-                        </p>
-                      </li>
-                    ))
-                  )}
-                </ul>
-              </PopoverContent>
-            </Popover>
-            {isFromOffice && (
-              <Button
-                variant="outline"
-                className="text-white border-white/20 hover:bg-white/10"
-                onClick={() => router.push("/virtual-office")}
-              >
-                <Users className="h-4 w-4 mr-2" />
-                Office
-              </Button>
+        <div className="flex items-center gap-3">
+          <Avatar>
+            {eveData?.photoUrl ? (
+              <AvatarImage src={eveData.photoUrl} alt="avatar" />
+            ) : (
+              <AvatarFallback>{eveData?.name?.[0] || "E"}</AvatarFallback>
             )}
+          </Avatar>
+          <div>
+            <h2 className="font-semibold">{eveData?.name || "EVE"}</h2>
+            <p className="text-sm text-indigo-200">
+              {eveData?.department || "AI Assistant"}
+            </p>
           </div>
+          {eveData?.status && (
+            <Badge variant="outline" className="text-xs border-indigo-400">
+              {eveData.status}
+            </Badge>
+          )}
         </div>
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-white/20 text-white hover:bg-white/10"
+            >
+              <ChevronDown />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64 bg-white text-black">
+            <h4 className="font-semibold mb-2">Employees</h4>
+            <ul className="space-y-1 max-h-60 overflow-y-auto">
+              {myEmployees.map((emp) => (
+                <li
+                  key={emp.id}
+                  className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
+                  onClick={() => setEveData(emp)}
+                >
+                  <p className="font-medium">{emp.name}</p>
+                  <p className="text-xs text-gray-500">{emp.department}</p>
+                </li>
+              ))}
+            </ul>
+          </PopoverContent>
+        </Popover>
       </div>
 
+      {/* ===== Messages ===== */}
       <ScrollArea className="flex-1 p-4">
-        <div className="container mx-auto max-w-4xl space-y-4">
+        <div className="space-y-4 max-w-3xl mx-auto">
           {messages.map((msg) => (
             <div
               key={msg.id}
-              className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
+              className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}
             >
-              <Card
-                className={`max-w-md rounded-2xl px-4 py-3 text-white shadow-md ${msg.sender === "user"
-                  ? "bg-gradient-to-r from-indigo-700 to-purple-700"
-                  : "bg-white/10 backdrop-blur border border-white/10"
+              <div
+                className={`max-w-[70%] px-4 py-2 rounded-2xl shadow-md ${msg.sender === "user"
+                    ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white"
+                    : "bg-white/10 border border-white/10 text-white"
                   }`}
               >
-                <CardContent className="p-0">
-                  {msg.type === "file" ? (
-                    <div className="space-y-1">
-                      {msg.content && (
-                        <p className="text-sm leading-relaxed">{msg.content}</p>
-                      )}
-                      <div>
-                        <p className="text-sm font-semibold">File:</p>
-                        <a
-                          href={msg.fileUrl}
-                          download={msg.fileName}
-                          target="_blank"
-                          className="underline text-sm"
-                        >
-                          {msg.fileName}
-                        </a>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-sm leading-relaxed">{msg.content}</p>
-                  )}
-
-                  <p className="text-xs opacity-60 mt-1 text-right">
-                    {format(new Date(msg.timestamp), "MMM dd, yyyy hh:mm a")}
-                  </p>
-                </CardContent>
-              </Card>
+                {msg.type === "file" && msg.fileUrl ? (
+                  <a
+                    href={msg.fileUrl}
+                    download={msg.fileName}
+                    className="underline text-sm block"
+                  >
+                    {msg.fileName}
+                  </a>
+                ) : (
+                  <p className="text-sm break-words">{msg.content}</p>
+                )}
+              </div>
+              <span className="text-[10px] opacity-60 mt-1">
+                {format(new Date(msg.timestamp), "HH:mm")}
+              </span>
             </div>
           ))}
 
-          {/* 👇 حط EVE is typing هنا بعد الرسائل */}
           {eveIsTyping && (
-            <div className="flex justify-start">
-              <Card className="max-w-xs rounded-2xl px-4 py-3 text-white bg-white/10 backdrop-blur border border-white/10 shadow-md animate-pulse">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex justify-start"
+            >
+              <Card className="px-4 py-2 bg-white/10 border border-white/10 rounded-2xl text-sm text-gray-200 italic">
                 <CardContent className="p-0">
-                  <p className="text-sm italic">{eveData?.name  } is typing...</p>
+                  {eveData?.name || "EVE"} is typing...
                 </CardContent>
               </Card>
-            </div>
+            </motion.div>
           )}
 
           <div ref={scrollRef} />
         </div>
       </ScrollArea>
 
-      <div className="bg-white/5 backdrop-blur-md p-4 border-t border-white/10">
-        <div className="container mx-auto max-w-4xl flex flex-col gap-2">
-          <div className="flex gap-2">
-            <Input
-              type="text"
-              placeholder={
-                eveData?.name
-                  ? `Message ${eveData.name}...`
-                  : "Select an employee first..."
+      {/* ===== Input ===== */}
+      <div className="bg-white/5 p-4 border-t border-white/10">
+        <div className="flex items-center gap-2 max-w-3xl mx-auto">
+          <Input
+            placeholder={
+              eveData ? `Message ${eveData.name}...` : "Select employee..."
+            }
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={handleKeyPress}
+            disabled={!eveData || isLoading}
+            className="flex-1 bg-white/10 border-white/20 text-white placeholder:text-white/50"
+          />
+          <input
+            type="file"
+            hidden
+            ref={fileInputRef}
+            onChange={(e) => {
+              const selected = e.target.files?.[0];
+              if (selected) {
+                setFile(selected);
+                toast({ title: "File selected", description: selected.name });
               }
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              disabled={!eveData?.id}
-              className="flex-1 bg-white/10 border-white/30 text-white placeholder:text-white/50 focus:ring-white focus:border-white px-4 py-2 rounded-xl"
-            />
-            <input
-              ref={fileInputRef}
-              type="file"
-              onChange={(e) => {
-                const selected = e.target.files?.[0];
-                if (selected) {
-                  setFile(selected);
-                  toast({
-                    title: "File selected",
-                    description: selected.name,
-                  });
-                }
-              }}
-
-              hidden
-            />
+            }}
+          />
+          <Button
+            variant="ghost"
+            className="text-white hover:bg-white/10"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Paperclip />
+          </Button>
+          <Button
+            onClick={handleSendMessage}
+            disabled={(!input.trim() && !file) || isLoading || !eveData}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white flex gap-1"
+          >
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send />}
+          </Button>
+        </div>
+        {file && (
+          <div className="text-xs text-white mt-2 flex items-center justify-between bg-white/10 p-2 rounded">
+            <span className="truncate">{file.name}</span>
             <Button
               variant="ghost"
-              className="text-white hover:bg-white/10"
-              onClick={() => fileInputRef.current?.click()}
+              size="sm"
+              className="text-red-400 hover:text-red-600"
+              onClick={() => setFile(null)}
             >
-              <Paperclip />
-            </Button>
-            <Button
-              onClick={handleSendMessage}
-              disabled={(!input.trim() && !file) || isLoading || !eveData?.id}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-xl"
-            >
-              <Send className="h-4 w-4" />
+              Remove
             </Button>
           </div>
-          {file && (
-            <div className="text-sm text-white bg-white/10 p-2 rounded-md flex items-center justify-between mt-1">
-              <span className="truncate max-w-[80%]">{file.name}</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-red-400 ml-2 hover:text-red-600"
-                onClick={() => setFile(null)}
-              >
-                Remove
-              </Button>
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

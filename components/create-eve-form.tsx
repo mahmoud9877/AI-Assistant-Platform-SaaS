@@ -155,6 +155,7 @@ const CreateEveForm = () => {
 
       localStorage.removeItem("allEmployees");
       localStorage.removeItem("myEmployees");
+      localStorage.removeItem("countEmployees");
       router.push("/chat-with-eve");
     } catch (error: any) {
       toast({

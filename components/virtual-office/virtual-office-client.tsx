@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
+
 import {
   Popover,
   PopoverContent,
@@ -40,6 +41,7 @@ import {
   UserCheck,
   Globe,
   ArrowLeft,
+  ChevronDown,
   Cuboid as Cube,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -99,25 +101,46 @@ export default function VirtualOfficeClient() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("office");
   const [searchTerm, setSearchTerm] = useState("");
+  const [pagination, setPagination] = useState({
+    page: 1,
+    totalPages: 1,
+    limit: 12,
+  });
   const [selectedDepartment, setSelectedDepartment] =
     useState("All Departments");
   const [employees, setEmployees] = useState<EveEmployee[]>([]);
+  const [countEmployees, setCountEmployees] = useState<EveEmployee[]>([]);
+
   const [myEmployeeSelected, setMyEmployeesSelected] =
     useState<EveEmployee | null>(null);
   const [myEmployees, setMyEmployees] = useState<EveEmployee[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  // 🛠 Helper لتخزين وجلب من الكاش
+  const getCachedData = (key: string) => {
+    const cached = localStorage.getItem(key);
+    if (!cached) return null;
+    try {
+      return JSON.parse(cached);
+    } catch {
+      return null;
+    }
+  };
+
+  const setCachedData = (key: string, data: any) => {
+    localStorage.setItem(key, JSON.stringify(data));
+  };
+
+  // 🧑‍💻 1- Fetch My Employees
   const fetchMyEmployees = async (forceRefresh = false) => {
     const token = localStorage.getItem("token");
-    const cached = localStorage.getItem("myEmployees");
+    const cacheKey = "myEmployees";
 
-    if (cached && !forceRefresh) {
-      try {
-        const parsed = JSON.parse(cached);
-        setMyEmployees(parsed);
+    if (!forceRefresh) {
+      const cached = getCachedData(cacheKey);
+      if (cached) {
+        setMyEmployees(cached);
         return;
-      } catch {
-        // ignore parse error
       }
     }
 
@@ -134,7 +157,7 @@ export default function VirtualOfficeClient() {
       const json = await res.json();
       if (json && json.employees) {
         setMyEmployees(json.employees);
-        localStorage.setItem("myEmployees", JSON.stringify(json.employees));
+        setCachedData(cacheKey, json.employees);
       } else {
         throw new Error(json?.message || "Something went wrong");
       }
@@ -148,23 +171,23 @@ export default function VirtualOfficeClient() {
     }
   };
 
-  const fetchAllEmployees = async (forceRefresh = false) => {
+  // 👥 2- Fetch Count Employees
+  const fetchCountEmployees = async (forceRefresh = false) => {
     const token = localStorage.getItem("token");
-    const cached = localStorage.getItem("allEmployees");
+    const cacheKey = "countEmployees";
 
-    if (cached && !forceRefresh) {
-      try {
-        const parsed = JSON.parse(cached);
-        setEmployees(parsed);
+    if (!forceRefresh) {
+      const cached = getCachedData(cacheKey);
+      if (cached) {
+        setCountEmployees(cached);
         return;
-      } catch {
-        // ignore parse error
       }
     }
 
+    setIsLoading(true);
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/eve-employee`,
+        `${process.env.NEXT_PUBLIC_BASE_URL}/eve-employee/all`,
         {
           headers: {
             "Content-Type": "application/json",
@@ -173,27 +196,75 @@ export default function VirtualOfficeClient() {
         }
       );
       const json = await res.json();
-      console.log(json)
-      if (json && json.employees) {
-        setEmployees(json.employees);
-        localStorage.setItem("allEmployees", JSON.stringify(json.employees));
-      } else {
-        throw new Error("No employees found");
+      if (json && typeof json.count === "number") {
+        setCountEmployees(json.count);
+        setCachedData(cacheKey, json.count);
       }
     } catch (error) {
-      console.error("Failed to fetch all employees:", error);
+      console.error("Failed to fetch employees count:", error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch employees count",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 📄 3- Fetch All Employees with Pagination
+  const fetchAllEmployees = async (page = 1, forceRefresh = false) => {
+    const token = localStorage.getItem("token");
+    const cacheKey = `employees_page_${page}`;
+
+    if (!forceRefresh) {
+      const cached = getCachedData(cacheKey);
+      if (cached) {
+        setEmployees((prev) =>
+          page === 1 ? cached.employees : [...prev, ...cached.employees]
+        );
+        setPagination(cached.pagination);
+        return;
+      }
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BASE_URL}/eve-employee?page=${page}&limit=${pagination.limit}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            authorization: `employee${token}`,
+          },
+        }
+      );
+      const json = await res.json();
+      if (json && json.employees) {
+        setEmployees((prev) =>
+          page === 1 ? json.employees : [...prev, ...json.employees]
+        );
+        setPagination(json.pagination);
+        setCachedData(cacheKey, json); // Cache result with pagination
+      }
+    } catch (error) {
+      console.error("Failed to fetch employees:", error);
       toast({
         title: "Error",
         description: "Failed to fetch employees",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
+
 
   // ✅ useEffect on mount
   useEffect(() => {
     fetchAllEmployees();
     fetchMyEmployees();
+    fetchCountEmployees();
   }, []);
 
   const handleSelectMyEmployee = (employee: EveEmployee) => {
@@ -291,13 +362,14 @@ export default function VirtualOfficeClient() {
       </div>
 
       {/* Header */}
-      <div className="relative bg-gradient-to-r from-[#1e1e3f] via-[#2b254f] to-[#1b1b36] shadow-md p-4 border-b border-white/10 backdrop-blur-md">
+      <div className="relative sticky top-0 z-50 bg-gradient-to-r from-[#1e1e3f] via-[#2b254f] to-[#1b1b36] shadow-md p-4 border-b border-white/10 backdrop-blur-md">
         <div className="container mx-auto flex flex-wrap items-center justify-between gap-4">
+
           {/* Left Section */}
           <div className="flex items-center flex-wrap gap-4">
             <Button
               variant="ghost"
-              className="text-white hover:text-white/80 hover:bg-white/10 p-2 transition"
+              className="text-white hover:text-indigo-300 hover:bg-white/10 p-2 transition-all duration-200"
               onClick={() => router.push("/home")}
             >
               <ArrowLeft className="h-5 w-5" />
@@ -316,18 +388,26 @@ export default function VirtualOfficeClient() {
               variant="ghost"
               size="sm"
               onClick={toggleLanguage}
-              className="text-white hover:text-white/80 hover:bg-white/10 transition"
+              className="text-white hover:text-indigo-300 hover:bg-white/10 transition-all duration-200"
             >
               <Globe className="h-4 w-4 mr-1" />
               {i18n?.language === "en" ? "عربي" : "English"}
             </Button>
-            <div className="text-sm text-indigo-200 whitespace-nowrap">
+            <div className="flex items-center gap-2 text-sm text-indigo-200 whitespace-nowrap">
               {t("virtualOffice.loggedInAs")}:{" "}
-              <span className="font-medium text-white">{user?.name}</span>
+              <div className="flex items-center gap-2">
+                <img
+                  src={user?.avatar || "/default-avatar.png"}
+                  alt="user avatar"
+                  className="w-6 h-6 rounded-full border border-indigo-300"
+                />
+                <span className="font-medium text-white">{user?.name}</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
 
       <div className="relative container mx-auto p-4">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -374,7 +454,7 @@ export default function VirtualOfficeClient() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
-                <Office3DRedesigned employees={employees} />
+                <Office3DRedesigned employees={employees} countEmployees={countEmployees} />
               </CardContent>
             </Card>
 
@@ -391,7 +471,7 @@ export default function VirtualOfficeClient() {
                 <CardContent>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-indigo-200">
-                      {t("virtualOffice.online")}: {employees.length}
+                      {t("virtualOffice.online")}: {countEmployees}
                     </span>
                     <Badge className="bg-green-200/10 text-green-300 border border-green-500/20">
                       {t("virtualOffice.active")}
@@ -631,21 +711,14 @@ export default function VirtualOfficeClient() {
                   className="pl-10 border-gray-300 focus:border-gray-500"
                 />
               </div>
-              <Select
-                value={selectedDepartment}
-                onValueChange={setSelectedDepartment}
-              >
+              <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
                 <SelectTrigger className="w-full md:w-[200px] border-gray-300">
-                  <SelectValue placeholder="All Departments" />
+                  <SelectValue placeholder={t("virtualOffice.allDepartments")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="All Departments">
-                    {t("virtualOffice.allDepartments")}
-                  </SelectItem>
+                  <SelectItem value="All Departments">{t("virtualOffice.allDepartments")}</SelectItem>
                   {departments.map((dept) => (
-                    <SelectItem key={dept} value={dept}>
-                      {dept}
-                    </SelectItem>
+                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -658,24 +731,16 @@ export default function VirtualOfficeClient() {
                   <Card
                     key={employee.id}
                     className="bg-gradient-to-br from-white to-gray-50 border border-gray-300 shadow-sm rounded-lg cursor-pointer transition-transform hover:scale-[1.02]"
-                    onClick={() =>
-                      router.push(`/chat?employeeId=${employee.id}`)
-                    }
+                    onClick={() => router.push(`/chat?employeeId=${employee.id}`)}
                   >
                     <CardHeader className="pb-2">
                       <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center">
-                          <span className="text-white font-semibold">
-                            {employee.name.charAt(0)}
-                          </span>
+                          <span className="text-white font-semibold">{employee.name.charAt(0)}</span>
                         </div>
                         <div>
-                          <CardTitle className="text-sm text-gray-800 font-medium truncate">
-                            {employee.name}
-                          </CardTitle>
-                          <CardDescription className="text-gray-600 text-xs truncate">
-                            {employee.department}
-                          </CardDescription>
+                          <CardTitle className="text-sm text-gray-800 font-medium truncate">{employee.name}</CardTitle>
+                          <CardDescription className="text-gray-600 text-xs truncate">{employee.department}</CardDescription>
                         </div>
                       </div>
                     </CardHeader>
@@ -696,15 +761,28 @@ export default function VirtualOfficeClient() {
                       </div>
 
                       {employee.introduction && (
-                        <p className="text-xs text-gray-600 mt-1 break-words">
-                          {employee.introduction}
-                        </p>
+                        <p className="text-xs text-gray-600 mt-1 break-words">{employee.introduction}</p>
                       )}
                     </CardContent>
                   </Card>
                 ))}
               </div>
             </ScrollArea>
+
+            {pagination.totalPages > pagination.page && (
+              <div className="flex justify-center mt-4">
+                <Button
+                  onClick={() => fetchAllEmployees(pagination.page + 1)}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                  disabled={isLoading}
+                >
+                  {t("virtualOffice.loadMoreEmployees")}
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
           </TabsContent>
 
           <TabsContent value="departments" className="space-y-6">
