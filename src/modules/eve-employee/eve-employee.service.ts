@@ -60,8 +60,12 @@ export class EmployeeService {
     return employee;
   }
 
+  findById(id: number): Promise<Employee | null> {
+    return Employee.findByPk(id);
+  }
+
   async getById(id: number): Promise<Employee> {
-    const employee = await Employee.findByPk(id);
+    const employee = await this.findById(id);
     if (!employee) throw new AppError("Employee not found", 404);
     return employee;
   }

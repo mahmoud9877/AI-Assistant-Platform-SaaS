@@ -77,18 +77,33 @@ Set these in `config/.env` for local runs (Docker Compose passes them from the r
 | `CORS_ORIGINS` | | Comma-separated allowed origins |
 | `PORT` | | Default `5000` |
 
+## 🛠️ Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Run from TypeScript source with auto-reload (`tsx watch`) |
+| `npm run build` | Compile `src/` to `dist/` |
+| `npm start` | Run the compiled server (`dist/index.js`) |
+| `npm run typecheck` | Type-check without emitting |
+
 ## 🗂️ Project structure
 
+Every dependency is created once and wired together in `App` (`src/app.ts`).
+
 ```
-index.js                 # starts the DB, then the HTTP server
 src/
-  app.js                 # express app: middleware + routes
-  config/env.js          # loads and validates environment variables
-  db/                    # Sequelize connection, models, startup sync
-  middleware/            # auth, validation, uploads, error handling
+  index.ts                 # connects the Database, then starts the App
+  app.ts                   # App: middleware, routers, dependency wiring
+  config/env.ts            # Config: loads and validates environment variables
+  core/                    # AppError, BaseController, BaseRouter, asyncHandler
+  db/
+    database.ts            # Database: connection, sync, missing-column migration
+    models/                # User, Employee (Sequelize model classes)
+  middleware/              # AuthMiddleware, Validator, UploadMiddleware, ErrorMiddleware
+  services/                # TokenService, PasswordHasher, DocumentTextExtractor
   modules/
-    auth/                # POST /auth/signup, /auth/login
-    eve-employee/        # /eve-employee CRUD, paging, count
-    chat/                # POST /chat (file knowledge + Cohere)
-  utils/                 # errors, tokens, passwords, PDF parsing
+    auth/                  # AuthService + AuthController + AuthRouter  (/auth)
+    eve-employee/          # EmployeeService + controller + router      (/eve-employee)
+    chat/                  # ChatService, CohereService + controller    (/chat)
+  types/                   # AuthUser and the req.user typing
 ```
