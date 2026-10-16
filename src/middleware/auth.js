@@ -1,47 +1,34 @@
-import { asyncHandler } from "../utils/errorHandling.js";
-import userModel from "../../DataBase/model/User.model.js";
-import { verifyToken } from "../utils/GenerateAndVerifyToken.js";
+import env from "../config/env.js";
+import { User } from "../db/models/index.js";
+import { verifyToken } from "../utils/token.js";
+import { AppError, asyncHandler } from "../utils/app-error.js";
 
-export const roles = {
-  Admin: "Admin",
-  User: "User",
-};
-
-export const auth = () => {
-  return asyncHandler(async (req, res, next) => {
+// Expects `authorization: <BEARER_KEY><jwt>` and attaches the user to req.user.
+export const auth = () =>
+  asyncHandler(async (req, res, next) => {
     const { authorization } = req.headers;
-    console.log("authorization", authorization);
 
-    // Check if authorization header starts with the correct bearer key
-    if (!authorization?.startsWith(process.env.BEARER_KEY)) {
-      return next(new Error("Invalid bearer key", { cause: 400 }));
+    if (!authorization?.startsWith(env.bearerKey)) {
+      throw new AppError("Invalid bearer key", 401);
     }
 
-    // Extract the token from the authorization header
-    const token = authorization.split(process.env.BEARER_KEY)[1];
+    const token = authorization.slice(env.bearerKey.length);
     if (!token) {
-      return next(new Error("Missing Token", { cause: 404 }));
+      throw new AppError("Missing token", 401);
     }
 
-    // Verify the token
-    const decoded = verifyToken({ token });
-    console.log("Decoded token:", decoded);
-
+    const decoded = verifyToken(token);
     if (!decoded?.id) {
-      return next(new Error("Invalid payload token", { cause: 404 }));
+      throw new AppError("Invalid token payload", 401);
     }
 
-    // Find the user by ID and select specific fields
-    const user = await userModel.findByPk(decoded.id, {
+    const user = await User.findByPk(decoded.id, {
       attributes: ["id", "name", "email"],
     });
-
     if (!user) {
-      return next(new Error("User not found", { cause: 401 }));
+      throw new AppError("User not found", 401);
     }
 
-    // Attach user to the request object
     req.user = user;
-    return next();
+    next();
   });
-};

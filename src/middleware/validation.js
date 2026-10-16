@@ -1,3 +1,4 @@
+import fs from "fs";
 import joi from "joi";
 
 export const generalFields = {
@@ -11,39 +12,23 @@ export const generalFields = {
     .required(),
   password: joi
     .string()
-    .pattern(new RegExp(/^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[a-zA-Z]).{8,}$/))
+    .pattern(/^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}$/)
     .required(),
   id: joi.number().integer().positive().required(),
-  file: joi.object({
-    size: joi.number().positive().required(),
-    path: joi.string().required(),
-    filename: joi.string().required(),
-    destination: joi.string().required(),
-    mimetype: joi.string().required(),
-    encoding: joi.string().required(),
-    originalname: joi.string().required(),
-    fieldname: joi.string().required(),
-  }),
 };
 
-export const validation = (schema, source = ["body", "params", "query"]) => {
+// Validates body, params and query merged into one object.
+export const validation = (schema, sources = ["body", "params", "query"]) => {
   return (req, res, next) => {
-    let inputsData = {};
+    const input = Object.assign({}, ...sources.map((key) => req[key]));
+    const { error } = schema.validate(input, { abortEarly: false });
 
-    source.forEach((key) => {
-      if (key === "file" && req.file) {
-        inputsData.file = req.file;
-      } else if (req[key]) {
-        inputsData = { ...inputsData, ...req[key] };
-      }
-    });
-
-    const validationResult = schema.validate(inputsData, { abortEarly: false });
-
-    if (validationResult.error) {
+    if (error) {
+      // Don't keep an uploaded image for a request that was rejected.
+      if (req.file?.path) fs.unlink(req.file.path, () => {});
       return res.status(400).json({
         message: "validationErr",
-        validationErr: validationResult.error.details,
+        validationErr: error.details,
       });
     }
 
