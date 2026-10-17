@@ -12,10 +12,17 @@ import { DocumentTextExtractor } from "./services/document-text-extractor.js";
 import { AuthRouter } from "./modules/auth/auth.router.js";
 import { AuthService } from "./modules/auth/auth.service.js";
 import { AuthController } from "./modules/auth/auth.controller.js";
-import { ChatRouter } from "./modules/chat/chat.router.js";
 import { ChatService } from "./modules/chat/chat.service.js";
 import { CohereService } from "./modules/chat/cohere.service.js";
-import { ChatController } from "./modules/chat/chat.controller.js";
+import { DepartmentRouter } from "./modules/department/department.router.js";
+import { DepartmentService } from "./modules/department/department.service.js";
+import { DepartmentController } from "./modules/department/department.controller.js";
+import { KnowledgeRouter } from "./modules/knowledge/knowledge.router.js";
+import { KnowledgeService } from "./modules/knowledge/knowledge.service.js";
+import { KnowledgeController } from "./modules/knowledge/knowledge.controller.js";
+import { ConversationRouter } from "./modules/conversation/conversation.router.js";
+import { ConversationService } from "./modules/conversation/conversation.service.js";
+import { ConversationController } from "./modules/conversation/conversation.controller.js";
 import { EmployeeRouter } from "./modules/eve-employee/eve-employee.router.js";
 import { EmployeeService } from "./modules/eve-employee/eve-employee.service.js";
 import { EmployeeController } from "./modules/eve-employee/eve-employee.controller.js";
@@ -39,26 +46,37 @@ export class App {
     const { config } = this;
 
     const tokens = new TokenService(config.tokenSignature);
-    const authService = new AuthService(new PasswordHasher(config.saltRounds), tokens);
+    const authService = new AuthService(new PasswordHasher(config.saltRounds), tokens, config.adminEmails);
     const employeeService = new EmployeeService();
-    const chatService = new ChatService(
-      employeeService,
-      new DocumentTextExtractor(),
-      new CohereService(config.cohereApiKey)
-    );
+    const cohere = new CohereService(config.cohereApiKey, config.cohereModel);
+    const knowledgeService = new KnowledgeService(employeeService, new DocumentTextExtractor(), cohere);
+    const chatService = new ChatService(knowledgeService, cohere);
+    const conversationService = new ConversationService(employeeService, chatService);
 
     const auth = new AuthMiddleware(config.bearerKey, tokens, authService);
     const upload = new UploadMiddleware(config.uploadsDir, config.isVercel);
 
     return [
-      new AuthRouter(new AuthController(authService)),
+      new AuthRouter(
+        new AuthController(authService, {
+          isProduction: config.isProduction,
+          sameSite: config.cookieSameSite,
+          apiPathPrefix: config.apiPathPrefix,
+        })
+      ),
+      new DepartmentRouter(new DepartmentController(new DepartmentService()), auth),
       new EmployeeRouter(new EmployeeController(employeeService), auth, upload),
-      new ChatRouter(new ChatController(chatService), auth, upload),
+      new KnowledgeRouter(new KnowledgeController(knowledgeService), auth, upload),
+      new ConversationRouter(new ConversationController(conversationService), auth, upload),
     ];
   }
 
   private registerMiddleware(): void {
     const { corsOrigins, uploadsDir } = this.config;
+
+    // Requests arrive through a proxy (Caddy, Vercel); trust its X-Forwarded-* headers
+    // so req.secure, req.protocol and req.ip describe the real client connection.
+    this.express.set("trust proxy", 1);
 
     this.express.use(
       cors({

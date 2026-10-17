@@ -4,7 +4,7 @@ import { asyncHandler } from "../core/http.js";
 import type { AuthService } from "../modules/auth/auth.service.js";
 import type { TokenService } from "../services/token.service.js";
 
-// Expects `authorization: <bearerKey><jwt>` and attaches the user to req.user.
+// Expects `authorization: <bearerKey><access token>` and attaches the user to req.user.
 export class AuthMiddleware {
   constructor(
     private readonly bearerKey: string,
@@ -24,7 +24,7 @@ export class AuthMiddleware {
       throw new AppError("Missing token", 401);
     }
 
-    const { id } = this.tokens.verify(token);
+    const { id } = this.tokens.verify(token, "access");
     if (!id) {
       throw new AppError("Invalid token payload", 401);
     }
@@ -32,4 +32,9 @@ export class AuthMiddleware {
     req.user = await this.authService.findUser(id);
     next();
   });
+
+  /** Use after `authenticate`: only admins get through. */
+  readonly requireAdmin: RequestHandler = (req, _res, next) => {
+    next(req.user?.role === "admin" ? undefined : new AppError("Only admins can do this.", 403));
+  };
 }

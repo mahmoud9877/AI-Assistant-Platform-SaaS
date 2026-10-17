@@ -13,8 +13,10 @@ export class ErrorMiddleware {
     const statusCode = ErrorMiddleware.statusFor(err);
     if (statusCode >= 500) console.error("❌", err);
 
+    // AppError messages are written for the client; only unexpected errors are hidden.
+    const hideMessage = statusCode >= 500 && this.isProduction && !(err instanceof AppError);
     res.status(statusCode).json({
-      message: statusCode >= 500 && this.isProduction ? "Internal Server Error" : err.message,
+      message: hideMessage ? "Internal Server Error" : err.message,
       ...(this.isProduction ? {} : { stack: err.stack }),
     });
   };

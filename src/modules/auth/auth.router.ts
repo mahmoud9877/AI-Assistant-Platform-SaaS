@@ -8,5 +8,7 @@ export class AuthRouter extends BaseRouter {
     super("/auth");
     this.router.post("/signup", Validator.validate(authSchemas.signup), controller.signup);
     this.router.post("/login", Validator.validate(authSchemas.login), controller.login);
+    this.router.post("/refresh", controller.refresh);
+    this.router.post("/logout", controller.logout);
   }
 }

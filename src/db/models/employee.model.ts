@@ -4,47 +4,14 @@ import {
   type CreationOptional,
   type InferAttributes,
   type InferCreationAttributes,
+  type NonAttribute,
   type Sequelize,
 } from "sequelize";
 import { User } from "./user.model.js";
-
-export const DEPARTMENTS = [
-  "CF PS HR MFG & Purchases",
-  "CF PS MFG EGYPT",
-  "F&A",
-  "FPWH",
-  "General Operations",
-  "GMDSO",
-  "HR",
-  "HS&E",
-  "IWS",
-  "Line-1",
-  "Line-10",
-  "Line-2",
-  "Line-9",
-  "P&E CFS ENG",
-  "P&E Cairo/Karachi",
-  "PFSS",
-  "QA",
-  "Regional GMDSO",
-  "Regional Tech Pack",
-  "Engineering",
-  "Marketing",
-  "Sales",
-  "Human Resources",
-  "General Employee",
-  "RPM WH",
-  "Shave Care Operations",
-  "Shave Care Qualilty",
-  "Storeroom",
-  "TSG Matrix",
-  "TSM",
-  "Utilities",
-] as const;
+import { Department } from "./department.model.js";
 
 export const STATUSES = ["online", "away", "busy", "in meeting"] as const;
 
-export type Department = (typeof DEPARTMENTS)[number];
 export type EmployeeStatus = (typeof STATUSES)[number];
 
 export class Employee extends Model<InferAttributes<Employee>, InferCreationAttributes<Employee>> {
@@ -54,7 +21,9 @@ export class Employee extends Model<InferAttributes<Employee>, InferCreationAttr
   declare introduction: string | null;
   declare knowledgeText: string | null;
   declare photoUrl: string | null;
-  declare department: Department | null;
+  declare departmentId: number | null;
+  /** Loaded when the query includes it (as "department"). */
+  declare department?: NonAttribute<Department | null>;
   declare status: CreationOptional<EmployeeStatus>;
   declare createdBy: number | null;
   declare createdAt: CreationOptional<Date>;
@@ -86,9 +55,12 @@ export class Employee extends Model<InferAttributes<Employee>, InferCreationAttr
           type: DataTypes.STRING,
           allowNull: true,
         },
-        department: {
-          type: DataTypes.ENUM(...DEPARTMENTS),
+        departmentId: {
+          type: DataTypes.INTEGER,
           allowNull: true,
+          references: { model: "Departments", key: "id" },
+          // The API refuses to delete a department that still has employees; this backs it up.
+          onDelete: "RESTRICT",
         },
         status: {
           type: DataTypes.ENUM(...STATUSES),
@@ -110,5 +82,7 @@ export class Employee extends Model<InferAttributes<Employee>, InferCreationAttr
   static associate(): void {
     User.hasMany(Employee, { foreignKey: "createdBy", as: "employees" });
     Employee.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
+    Department.hasMany(Employee, { foreignKey: "departmentId", as: "employees" });
+    Employee.belongsTo(Department, { foreignKey: "departmentId", as: "department" });
   }
 }

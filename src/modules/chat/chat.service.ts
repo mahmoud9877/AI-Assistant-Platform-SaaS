@@ -1,53 +1,73 @@
 import { AppError } from "../../core/app-error.js";
-import { egyptDateTime } from "./egypt-time.js";
-import type { CohereService } from "./cohere.service.js";
+import type { ChatTurn, CohereService } from "./cohere.service.js";
 import type { Employee } from "../../db/models/employee.model.js";
-import type { EmployeeService } from "../eve-employee/eve-employee.service.js";
-import type { DocumentTextExtractor } from "../../services/document-text-extractor.js";
+import type { MessageSource } from "../../db/models/message.model.js";
+import type { KnowledgeService, Passage } from "../knowledge/knowledge.service.js";
 
-const MAX_KNOWLEDGE_LENGTH = 500000;
+export interface Reply {
+  text: string;
+  /** The knowledge files the reply cites, in citation order. */
+  sources: MessageSource[];
+}
 
+/** What an EVE employee says: finding what it knows about a question and answering with the AI. */
 export class ChatService {
   constructor(
-    private readonly employees: EmployeeService,
-    private readonly extractor: DocumentTextExtractor,
+    private readonly knowledge: KnowledgeService,
     private readonly ai: CohereService
   ) {}
 
-  async chat(employeeId: number, question: string | undefined, file?: Express.Multer.File): Promise<string> {
-    if (!question && !file) {
-      throw new AppError("Either message or file is required.", 400);
-    }
-
-    const employee = await this.employees.findById(employeeId);
-    if (!employee) throw new AppError("Employee not found.", 404);
-
-    if (file) await this.addToKnowledge(employee, file);
-
-    const reply = await this.ai.ask(employee, question);
-    if (!reply) throw new AppError("No response generated from Cohere.", 500);
-    return reply;
+  /** Adds a document to the employee's knowledge; only its owner may teach it. */
+  async learn(employee: Employee, userId: number, file: Express.Multer.File): Promise<void> {
+    await this.knowledge.add(employee, userId, file);
   }
 
-  // Appends the file's text (summarized if long) to the employee's knowledge.
-  private async addToKnowledge(employee: Employee, file: Express.Multer.File): Promise<void> {
-    let text: string | null;
+  async reply(employee: Employee, history: ChatTurn[], question: string | undefined): Promise<Reply> {
+    const passages = await this.findPassages(employee, history, question);
+    // Still set only when the employee's old single-text knowledge couldn't be migrated yet.
+    const legacyKnowledge = employee.knowledgeText;
+
+    let answer;
     try {
-      text = await this.extractor.extract(file);
-      if (text !== null) text = await this.ai.summarizeIfLong(text);
+      answer = await this.ai.ask(
+        employee,
+        history,
+        question,
+        passages.map((p) => ({ id: String(p.chunkId), title: p.fileName, text: p.content })),
+        legacyKnowledge
+      );
     } catch (err) {
-      console.error("❌ File analysis failed:", err);
-      throw new AppError("File analysis failed.", 500);
+      // Logged in full here; the client only learns that the AI call failed.
+      console.error("❌ Chat error:", err);
+      throw new AppError("EVE could not answer right now. Please try again.", 502);
     }
-    if (text === null) throw new AppError("Unsupported file type.", 400);
+    if (!answer) throw new AppError("No response generated from Cohere.", 502);
 
-    const knowledge = `${employee.knowledgeText || ""}\n\n--- New Upload at ${egyptDateTime()} ---\n${text}`;
-    if (knowledge.length > MAX_KNOWLEDGE_LENGTH) {
-      throw new AppError("The total knowledge size exceeds the allowed limit.", 400);
+    return { text: answer.text, sources: ChatService.sourcesFor(answer.citedIds, passages) };
+  }
+
+  // A follow-up like "and the second one?" means little alone, so the previous
+  // question is searched with it. Search failures leave the reply ungrounded, not failed.
+  private async findPassages(employee: Employee, history: ChatTurn[], question: string | undefined): Promise<Passage[]> {
+    const previous = [...history].reverse().find((turn) => turn.role === "user")?.content;
+    const query = [previous, question].filter(Boolean).join("\n");
+    try {
+      return await this.knowledge.search(employee, query);
+    } catch (err) {
+      console.error("❌ Knowledge search failed:", err);
+      return [];
     }
+  }
 
-    employee.knowledgeText = knowledge;
-    await employee.save();
-    console.log("✅ Knowledge updated for employee:", employee.id);
+  private static sourcesFor(citedIds: string[], passages: Passage[]): MessageSource[] {
+    const byChunk = new Map(passages.map((p) => [String(p.chunkId), p]));
+    const sources = new Map<number, MessageSource>();
+    for (const id of citedIds) {
+      const passage = byChunk.get(id);
+      if (passage && !sources.has(passage.documentId)) {
+        sources.set(passage.documentId, { documentId: passage.documentId, fileName: passage.fileName });
+      }
+    }
+    return [...sources.values()];
   }
 }

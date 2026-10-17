@@ -1,9 +1,10 @@
 import joi from "joi";
 import { generalFields } from "../../middleware/validation.middleware.js";
-import { DEPARTMENTS, STATUSES } from "../../db/models/employee.model.js";
+import { STATUSES } from "../../db/models/employee.model.js";
 
 const name = joi.string().trim().min(2).max(20);
-const department = joi.string().valid(...DEPARTMENTS);
+// Checked against the Departments table by the service.
+const departmentId = joi.number().integer().positive();
 
 export const employeeSchemas = {
   list: joi.object({
@@ -16,7 +17,7 @@ export const employeeSchemas = {
   create: joi
     .object({
       name: name.required(),
-      department: department.required(),
+      departmentId: departmentId.required(),
       introduction: joi.string().trim().min(2).max(2000).required(),
     })
     .required(),
@@ -24,7 +25,7 @@ export const employeeSchemas = {
   update: joi.object({
     id: generalFields.id,
     name: name.allow(null),
-    department: department.allow(null),
+    departmentId: departmentId.allow(null),
     role: joi.string().trim().min(1).max(255),
     status: joi.string().valid(...STATUSES),
   }),

@@ -1,9 +1,29 @@
+import type { CookieOptions, Response } from "express";
+import type { SameSite } from "../../config/env.js";
 import { asyncHandler, BaseController } from "../../core/http.js";
-import type { AuthService } from "./auth.service.js";
+import { REFRESH_TOKEN_MAX_AGE_MS } from "../../services/token.service.js";
+import type { AuthService, Session } from "./auth.service.js";
+
+const REFRESH_COOKIE = "refreshToken";
 
 export class AuthController extends BaseController {
-  constructor(private readonly authService: AuthService) {
+  private readonly cookieOptions: CookieOptions;
+
+  constructor(
+    private readonly authService: AuthService,
+    { isProduction, sameSite, apiPathPrefix }: { isProduction: boolean; sameSite: SameSite; apiPathPrefix: string }
+  ) {
     super();
+    // httpOnly keeps the refresh token away from page scripts, and the auth path keeps it
+    // off every other request. The path is the one the browser sees, so it includes the
+    // proxy's prefix (e.g. /api/auth). SameSite=None (needed when the frontend is on
+    // another site) requires Secure.
+    this.cookieOptions = {
+      httpOnly: true,
+      secure: isProduction || sameSite === "none",
+      sameSite,
+      path: `${apiPathPrefix}/auth`,
+    };
   }
 
   readonly signup = asyncHandler(async (req, res) => {
@@ -12,6 +32,28 @@ export class AuthController extends BaseController {
   });
 
   readonly login = asyncHandler(async (req, res) => {
-    res.status(200).json(await this.authService.login(req.body));
+    this.sendSession(res, await this.authService.login(req.body));
   });
+
+  readonly refresh = asyncHandler(async (req, res) => {
+    try {
+      this.sendSession(res, await this.authService.refresh(req.cookies[REFRESH_COOKIE]));
+    } catch (err) {
+      // A dead refresh token is useless; drop it so the browser stops sending it.
+      res.clearCookie(REFRESH_COOKIE, this.cookieOptions);
+      throw err;
+    }
+  });
+
+  readonly logout = asyncHandler(async (req, res) => {
+    await this.authService.logout(req.cookies[REFRESH_COOKIE]);
+    res.clearCookie(REFRESH_COOKIE, this.cookieOptions);
+    res.status(204).end();
+  });
+
+  // The refresh token goes only in the cookie, never in the body.
+  private sendSession(res: Response, { refreshToken, accessToken, user }: Session): void {
+    res.cookie(REFRESH_COOKIE, refreshToken, { ...this.cookieOptions, maxAge: REFRESH_TOKEN_MAX_AGE_MS });
+    res.status(200).json({ accessToken, user });
+  }
 }

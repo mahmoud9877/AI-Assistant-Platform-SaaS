@@ -12,6 +12,7 @@ export class User extends Model<InferAttributes<User>, InferCreationAttributes<U
   declare name: CreationOptional<string | null>;
   declare email: string;
   declare password: string;
+  declare tokenVersion: CreationOptional<number>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 
@@ -33,6 +34,11 @@ export class User extends Model<InferAttributes<User>, InferCreationAttributes<U
         password: {
           type: DataTypes.STRING,
           allowNull: false,
+        },
+        tokenVersion: {
+          type: DataTypes.INTEGER,
+          allowNull: false,
+          defaultValue: 0,
         },
         createdAt: DataTypes.DATE,
         updatedAt: DataTypes.DATE,
