@@ -84,14 +84,7 @@ export default function VirtualOffice() {
           </TabsContent>
 
           <TabsContent value="people" className="space-y-6">
-            <PeopleTab
-              employees={office.employees}
-              department={department}
-              onDepartmentChange={setDepartment}
-              hasMore={office.hasMore}
-              isLoading={office.isLoading}
-              onLoadMore={office.loadMore}
-            />
+            <PeopleTab department={department} onDepartmentChange={setDepartment} />
           </TabsContent>
 
           <TabsContent value="profile" className="space-y-6 mt-6">

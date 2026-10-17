@@ -20,6 +20,23 @@ export const authApi = {
 
   /** Revokes the refresh token and clears its cookie. */
   logout: () => apiRequest<void>("/auth/logout", { method: "POST", auth: false }),
+
+  signup: (email: string, password: string, name: string) =>
+    apiRequest<{ userId: number }>("/auth/signup", { method: "POST", body: { email, password, name }, auth: false }),
+
+  /** Emails a reset link if the address has an account; the answer is the same either way. */
+  forgotPassword: (email: string) =>
+    apiRequest<{ message: string }>("/auth/forgot-password", { method: "POST", body: { email }, auth: false }),
+
+  resetPassword: (token: string, password: string) =>
+    apiRequest<void>("/auth/reset-password", { method: "POST", body: { token, password }, auth: false }),
+
+  /** Signs out every other device; returns a fresh session for this one. */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    apiRequest<SessionResponse>("/auth/change-password", { method: "POST", body: { currentPassword, newPassword } }),
+
+  updateProfile: async (name: string) =>
+    (await apiRequest<{ user: User }>("/auth/me", { method: "PATCH", body: { name } })).user,
 };
 
 /** i18n key for why a login attempt failed. */

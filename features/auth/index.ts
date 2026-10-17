@@ -2,5 +2,9 @@ export { useAuth, useAuthStore, onSignOut, type LoginResult, type SignOutReason 
 export { AuthSession } from "./auth-session";
 export { RequireAuth, GuestOnly } from "./guards";
 export { default as LoginScreen } from "./components/login-screen";
+export { default as SignupScreen } from "./components/signup-screen";
+export { default as ForgotPasswordScreen } from "./components/forgot-password-screen";
+export { default as ResetPasswordScreen } from "./components/reset-password-screen";
+export { default as AccountPage } from "./components/account-page";
 export type { User } from "./types";
 export { LogoutButton } from "./components/logout-button";

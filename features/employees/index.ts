@@ -1,10 +1,21 @@
-export type { Employee, EmployeeCard, EmployeeStatus, Pagination } from "./types";
-export { STATUSES, STATUS_COLORS, STATUS_LABEL_KEYS } from "./constants";
+export type {
+  Employee,
+  EmployeeCard,
+  EmployeeFilters,
+  EmployeeSettings,
+  EmployeeStatus,
+  Pagination,
+  ReplyLanguage,
+  Tone,
+} from "./types";
+export { REPLY_LANGUAGES, STATUSES, STATUS_COLORS, STATUS_LABEL_KEYS, TONES } from "./constants";
 export { employeesApi, type EmployeeUpdate } from "./api";
 export {
   employeeKeys,
   useCreateEmployee,
+  useDeleteEmployee,
   useEmployee,
+  useEmployeeSettings,
   useEmployeeCount,
   useMyEmployees,
   usePagedEmployees,

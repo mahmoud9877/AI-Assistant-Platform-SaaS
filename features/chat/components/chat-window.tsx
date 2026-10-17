@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { BookOpen, History, Loader2 } from "lucide-react";
-import { useConversations, useMessages, useSendMessage } from "../hooks";
+import { BookOpen, History, Loader2, Settings2 } from "lucide-react";
+import { isStreaming, useConversations, useMessages, useSendMessage } from "../hooks";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { EmployeeCard } from "@/features/employees";
@@ -43,6 +43,18 @@ export function ChatWindow({ employee, backHref, canTeach, headerAction, emptyHi
               >
                 <Link href={`/knowledge?employeeId=${employee.id}`} aria-label="Files this EVE knows" title="Files this EVE knows">
                   <BookOpen />
+                </Link>
+              </Button>
+            )}
+            {employee && canTeach && (
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="border-white/20 bg-transparent text-white hover:bg-white/10"
+              >
+                <Link href={`/manage-eve?employeeId=${employee.id}`} aria-label="EVE settings" title="EVE settings">
+                  <Settings2 />
                 </Link>
               </Button>
             )}
@@ -97,6 +109,8 @@ function EmployeeConversations({ employee, canTeach, showHistory, onHistoryDone 
   const activeId = picked === "new" ? null : pickedExists ? (picked as number) : (conversations[0]?.id ?? null);
 
   const { messages, isLoading, isSending } = useMessages(activeId);
+  // "Typing…" only until the first words of the reply arrive.
+  const isWaiting = isSending && !messages.some(isStreaming);
   const sendMessage = useSendMessage(employee.id);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -136,7 +150,7 @@ function EmployeeConversations({ employee, canTeach, showHistory, onHistoryDone 
               <MessageBubble key={message.id} message={message} />
             ))}
 
-            {isSending && (
+            {isWaiting && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
                 <div className="px-4 py-2 bg-white/10 border border-white/10 rounded-2xl text-sm text-gray-200 italic">
                   {employee.name ?? "EVE"} is typing...

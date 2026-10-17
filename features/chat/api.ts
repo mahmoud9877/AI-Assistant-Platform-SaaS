@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api-client";
+import { ApiError, apiRequest, apiStream } from "@/lib/api-client";
 import type { ChatMessage, Conversation } from "./types";
 
 export const chatApi = {
@@ -17,6 +17,26 @@ export const chatApi = {
       .conversation,
 
   remove: (id: number) => apiRequest<void>(`/conversations/${id}`, { method: "DELETE" }),
+
+  /**
+   * Like send, but EVE's reply arrives piece by piece: `onText` gets each piece as it is
+   * written. Resolves with the saved messages once the reply is complete.
+   */
+  sendStream: async (id: number, message: string, file: File | null, onText: (text: string) => void) => {
+    const form = new FormData();
+    form.append("message", message);
+    if (file) form.append("file", file);
+
+    let result: { conversation: Conversation; messages: ChatMessage[] } | undefined;
+    let failure: string | undefined;
+    await apiStream(`/conversations/${id}/messages/stream`, { method: "POST", body: form }, (event, data) => {
+      if (event === "delta") onText((data as { text: string }).text);
+      else if (event === "done") result = data as typeof result;
+      else if (event === "error") failure = (data as { message: string }).message;
+    });
+    if (!result) throw new ApiError(failure ?? "The reply was cut off. Please try again.", 502);
+    return result;
+  },
 
   /** Sends a message (and optionally a PDF/DOCX for the EVE to learn from); returns it with the reply. */
   send: (id: number, message: string, file?: File | null) => {

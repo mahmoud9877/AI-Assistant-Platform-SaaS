@@ -1,4 +1,7 @@
-import type { STATUSES } from "./constants";
+import type { REPLY_LANGUAGES, STATUSES, TONES } from "./constants";
+
+export type Tone = (typeof TONES)[number];
+export type ReplyLanguage = (typeof REPLY_LANGUAGES)[number];
 
 export type EmployeeStatus = (typeof STATUSES)[number];
 
@@ -25,4 +28,18 @@ export interface Pagination {
   limit: number;
   total: number;
   totalPages: number;
+}
+
+/** Everything the owner can edit about their EVE (`/eve-employee/:id/settings`). */
+export interface EmployeeSettings extends Employee {
+  tone: Tone;
+  replyLanguage: ReplyLanguage;
+  /** Private guidance added to the EVE's prompt. */
+  customInstructions: string | null;
+}
+
+/** Server-side filters for the paged employee list. */
+export interface EmployeeFilters {
+  search?: string;
+  departmentId?: number;
 }

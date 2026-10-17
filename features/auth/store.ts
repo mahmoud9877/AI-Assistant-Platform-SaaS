@@ -29,6 +29,8 @@ interface AuthState {
   /** Trades the refresh-token cookie for a new access token; resolves null when there is no session. */
   refresh: () => Promise<User | null>;
   endSession: (reason: SignOutReason) => void;
+  /** After the user changed their name or password, the backend's fresh user/session. */
+  updateSession: (changes: { user: User; accessToken?: string }) => void;
 }
 
 let pendingRefresh: Promise<User | null> | null = null;
@@ -79,6 +81,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 
   endSession: (reason) => set({ user: null, accessToken: null, signOutReason: reason }),
+
+  updateSession: ({ user, accessToken }) => set(accessToken ? { user, accessToken } : { user }),
 }));
 
 // Wired at import time so every request, even the first, carries the current token.

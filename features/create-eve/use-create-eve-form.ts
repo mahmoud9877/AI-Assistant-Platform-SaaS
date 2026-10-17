@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
@@ -8,8 +7,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useCreateEmployee } from "@/features/employees";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { usePhoto } from "@/hooks/use-photo";
 
-const PHOTO_TYPES = ["image/jpeg", "image/png"];
 
 // Limits match the backend's validation.
 const createEveSchema = z.object({
@@ -28,32 +27,6 @@ const createEveSchema = z.object({
 });
 
 export type CreateEveValues = z.infer<typeof createEveSchema>;
-
-/** Image chosen for the new EVE, with a preview URL that is released when replaced. */
-function usePhoto() {
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState("");
-
-  useEffect(() => {
-    if (!file) return setPreview("");
-    const url = URL.createObjectURL(file);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-
-  const choose = (e: ChangeEvent<HTMLInputElement>) => {
-    const chosen = e.target.files?.[0];
-    e.target.value = "";
-    if (!chosen) return;
-    if (!PHOTO_TYPES.includes(chosen.type)) {
-      notifyError("Invalid file", "Please upload a JPG or PNG image.");
-      return;
-    }
-    setFile(chosen);
-  };
-
-  return { file, preview, accept: PHOTO_TYPES.join(","), choose, clear: () => setFile(null) };
-}
 
 /** Form state, validation, photo and submission for creating an EVE employee. */
 export function useCreateEveForm() {

@@ -67,6 +67,12 @@ export function useMessages(conversationId: number | null) {
   };
 }
 
+/** Id of EVE's reply while it is still streaming in (one send per conversation at a time). */
+export const streamingId = (conversationId: number) => `streaming-${conversationId}`;
+
+/** True for a message still being written by EVE. */
+export const isStreaming = (message: ChatMessage) => typeof message.id === "string" && message.id.startsWith("streaming-");
+
 // Puts a changed conversation first, as the server orders by latest activity.
 function moveToTop(queryClient: QueryClient, conversation: Conversation): void {
   queryClient.setQueryData<Conversation[]>(chatKeys.conversations(conversation.employeeId), (list = []) => [
@@ -95,7 +101,26 @@ export function useSendMessage(employeeId: number) {
 
   const sendMessage = useMutation({
     mutationKey: chatKeys.send(),
-    mutationFn: ({ conversationId, text, file }: SendVariables) => chatApi.send(conversationId, text, file),
+    // The reply streams into a temporary EVE message that grows with each piece.
+    mutationFn: ({ conversationId, text, file }: SendVariables) =>
+      chatApi.sendStream(conversationId, text, file, (piece) =>
+        queryClient.setQueryData<ChatMessage[]>(chatKeys.messages(conversationId), (list = []) => {
+          const last = list.at(-1);
+          if (last?.id === streamingId(conversationId)) {
+            return [...list.slice(0, -1), { ...last, content: last.content + piece }];
+          }
+          return [
+            ...list,
+            {
+              id: streamingId(conversationId),
+              role: "assistant",
+              content: piece,
+              fileName: null,
+              createdAt: new Date().toISOString(),
+            },
+          ];
+        })
+      ),
     // Shown right away; replaced by the stored message once the reply arrives.
     onMutate: async ({ conversationId, text, file }) => {
       const key = chatKeys.messages(conversationId);
@@ -112,7 +137,7 @@ export function useSendMessage(employeeId: number) {
     },
     onSuccess: ({ conversation, messages }, { conversationId, file }, context) => {
       queryClient.setQueryData<ChatMessage[]>(chatKeys.messages(conversationId), (list = []) => [
-        ...list.filter((m) => m.id !== context.pendingId),
+        ...list.filter((m) => m.id !== context.pendingId && m.id !== streamingId(conversationId)),
         ...messages,
       ]);
       moveToTop(queryClient, conversation);
@@ -120,7 +145,7 @@ export function useSendMessage(employeeId: number) {
     },
     onError: (err, { conversationId }, context) => {
       queryClient.setQueryData<ChatMessage[]>(chatKeys.messages(conversationId), (list = []) =>
-        list.filter((m) => m.id !== context?.pendingId)
+        list.filter((m) => m.id !== context?.pendingId && m.id !== streamingId(conversationId))
       );
       notifyError("Failed to get response from EVE", err);
     },

@@ -3,36 +3,35 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, MessageSquare, Search } from "lucide-react";
+import { ChevronDown, Loader2, MessageSquare, Search } from "lucide-react";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmployeeInitial } from "@/features/employees";
+import { EmployeeInitial, usePagedEmployees } from "@/features/employees";
 import { ALL_DEPARTMENTS, DepartmentSelect } from "@/features/departments";
-import type { Employee } from "@/features/employees";
+
+const PAGE_SIZE = 12;
 
 interface PeopleTabProps {
-  employees: Employee[];
   /** A department id (as a string), or `ALL_DEPARTMENTS`. */
   department: string;
   onDepartmentChange: (department: string) => void;
-  hasMore: boolean;
-  isLoading: boolean;
-  onLoadMore: () => void;
 }
 
-export function PeopleTab({ employees, department, onDepartmentChange, hasMore, isLoading, onLoadMore }: PeopleTabProps) {
+/** Every EVE in the office, searched and filtered by the server, a page at a time. */
+export function PeopleTab({ department, onDepartmentChange }: PeopleTabProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const [search, setSearch] = useState("");
+  // Waits for a pause in typing before asking the server.
+  const query = useDebouncedValue(search.trim(), 300);
+  const { employees: visible, total, isLoading, hasMore, loadMore } = usePagedEmployees(PAGE_SIZE, {
+    search: query || undefined,
+    departmentId: department === ALL_DEPARTMENTS ? undefined : Number(department),
+  });
 
-  const query = search.trim().toLowerCase();
-  const visible = employees.filter(
-    (emp) =>
-      (department === ALL_DEPARTMENTS || String(emp.departmentId) === department) &&
-      (!query || emp.name.toLowerCase().includes(query) || emp.department?.toLowerCase().includes(query))
-  );
   const openChat = (id: number) => router.push(`/chat?employeeId=${id}`);
 
   return (
@@ -54,6 +53,11 @@ export function PeopleTab({ employees, department, onDepartmentChange, hasMore, 
           className="w-full md:w-[200px] bg-white border-gray-300"
         />
       </div>
+
+      <p className="text-sm text-indigo-200 mb-3 flex items-center gap-2" role="status">
+        {t("virtualOffice.resultsCount", { count: total })}
+        {isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-label={t("virtualOffice.searching")} />}
+      </p>
 
       <ScrollArea className="h-[600px] pe-2">
         {visible.length === 0 && !isLoading && (
@@ -91,7 +95,7 @@ export function PeopleTab({ employees, department, onDepartmentChange, hasMore, 
 
       {hasMore && (
         <div className="flex justify-center mt-4">
-          <Button onClick={onLoadMore} variant="outline" className="flex items-center gap-2" disabled={isLoading}>
+          <Button onClick={loadMore} variant="outline" className="flex items-center gap-2" disabled={isLoading}>
             {t("virtualOffice.loadMoreEmployees")}
             <ChevronDown className="h-4 w-4" />
           </Button>

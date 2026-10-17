@@ -54,7 +54,8 @@ function errorMessage(body: unknown, status: number): string {
   return `Request failed (${status})`;
 }
 
-export async function apiRequest<T>(path: string, { method = "GET", body, auth = true }: RequestOptions = {}): Promise<T> {
+// Sends the request with the current access token; on 401 renews the session once and retries.
+async function authorizedFetch(path: string, { method = "GET", body, auth = true }: RequestOptions): Promise<Response> {
   const headers: Record<string, string> = {};
 
   let payload: BodyInit | undefined;
@@ -72,12 +73,14 @@ export async function apiRequest<T>(path: string, { method = "GET", body, auth =
     return fetch(`${API_URL}${path}`, { method, headers, body: payload, credentials: "include" });
   };
 
-  let res = await send();
+  const res = await send();
   // The access token is short-lived: on 401, renew the session once and retry.
-  if (res.status === 401 && auth && (await sessionRefresher?.())) {
-    res = await send();
-  }
+  if (res.status === 401 && auth && (await sessionRefresher?.())) return send();
+  return res;
+}
 
+// Reads the body of a response; throws an ApiError for a non-2xx status.
+async function readResponse(res: Response, auth: boolean): Promise<unknown> {
   // 204 No Content has no body to parse, whatever its headers say.
   const isJson = res.headers.get("content-type")?.includes("application/json");
   const data: unknown = res.status === 204 ? undefined : isJson ? await res.json() : await res.text();
@@ -86,5 +89,47 @@ export async function apiRequest<T>(path: string, { method = "GET", body, auth =
     if (res.status === 401 && auth) unauthorizedHandler?.();
     throw new ApiError(errorMessage(data, res.status), res.status);
   }
-  return data as T;
+  return data;
+}
+
+export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const res = await authorizedFetch(path, options);
+  return (await readResponse(res, options.auth ?? true)) as T;
+}
+
+/**
+ * Calls an endpoint that answers with Server-Sent Events, passing each event's name and
+ * parsed JSON data to `onEvent` as it arrives. Resolves when the stream ends. An error
+ * status before the stream starts throws an ApiError, like apiRequest.
+ */
+export async function apiStream(
+  path: string,
+  options: RequestOptions,
+  onEvent: (event: string, data: unknown) => void
+): Promise<void> {
+  const res = await authorizedFetch(path, options);
+  if (!res.ok || !res.headers.get("content-type")?.includes("text/event-stream") || !res.body) {
+    await readResponse(res, options.auth ?? true);
+    throw new ApiError("The server did not start a stream.", res.status);
+  }
+
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += value;
+    // Events are separated by a blank line; the last piece may still be incomplete.
+    const blocks = buffer.split("\n\n");
+    buffer = blocks.pop() ?? "";
+    for (const block of blocks) {
+      let event = "message";
+      let data = "";
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) data += line.slice(5).trim();
+      }
+      if (data) onEvent(event, JSON.parse(data));
+    }
+  }
 }

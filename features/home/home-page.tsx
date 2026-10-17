@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
-import { BookOpen, Building2, MessageSquare, UserPlus, Users, type LucideIcon } from "lucide-react";
+import { BookOpen, Building2, CircleUser, MessageSquare, Settings2, UserPlus, Users, type LucideIcon } from "lucide-react";
 import { useAuthStore, LogoutButton } from "@/features/auth";
 import { useMyEmployees } from "@/features/employees";
 import { Button } from "@/components/ui/button";
@@ -78,13 +78,19 @@ export default function HomePage() {
                 </Link>
               </Button>
             )}
+            <Button asChild variant="outline" className="bg-transparent text-white border-white/30 hover:bg-white/10">
+              <Link href="/account">
+                <CircleUser className="h-4 w-4 me-2" />
+                {t("account.title")}
+              </Link>
+            </Button>
             <LanguageToggle />
             <LogoutButton />
           </div>
         </header>
 
         <div className="flex-1 flex items-center justify-center">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-6xl">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-5xl">
             <ActionCard
               icon={UserPlus}
               color="blue"
@@ -109,6 +115,15 @@ export default function HomePage() {
               description={t("home.teachEveDesc")}
               href="/knowledge"
               action={hasEve ? t("home.manageFiles") : t("home.createEveFirst")}
+              disabled={!hasEve}
+            />
+            <ActionCard
+              icon={Settings2}
+              color="purple"
+              title={t("home.manageEves")}
+              description={t("home.manageEvesDesc")}
+              href="/manage-eve"
+              action={hasEve ? t("home.manage") : t("home.createEveFirst")}
               disabled={!hasEve}
             />
             <ActionCard

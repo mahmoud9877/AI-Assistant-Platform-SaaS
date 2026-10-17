@@ -1,3 +1,7 @@
+// Must match the backend's employee model.
+export const TONES = ["professional", "friendly", "formal", "casual", "concise"] as const;
+export const REPLY_LANGUAGES = ["auto", "en", "ar"] as const;
+
 // Must match the backend's employee model enum.
 export const STATUSES = ["online", "away", "busy", "in meeting"] as const;
 
