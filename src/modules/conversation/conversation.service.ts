@@ -2,6 +2,7 @@ import { AppError } from "../../core/app-error.js";
 import type { InferAttributes } from "sequelize";
 import { Message } from "../../db/models/message.model.js";
 import { Conversation, DEFAULT_CONVERSATION_TITLE } from "../../db/models/conversation.model.js";
+import type { Employee } from "../../db/models/employee.model.js";
 import type { ChatService } from "../chat/chat.service.js";
 import type { EmployeeService } from "../eve-employee/eve-employee.service.js";
 
@@ -10,6 +11,19 @@ const HISTORY_MESSAGES = 20;
 const TITLE_LENGTH = 60;
 
 const MESSAGE_FIELDS = ["id", "role", "content", "fileName", "sources", "createdAt"] as const;
+
+/** A message the user sent, checked and ready to be answered. */
+export interface PreparedSend {
+  conversation: Conversation;
+  employee: Employee;
+  text: string | undefined;
+  fileName: string | null;
+}
+
+export interface SendResult {
+  conversation: Conversation;
+  messages: MessageView[];
+}
 
 /** A message as the client sees it. */
 export type MessageView = Pick<InferAttributes<Message>, (typeof MESSAGE_FIELDS)[number]>;
@@ -63,7 +77,21 @@ export class ConversationService {
     id: number,
     question: string | undefined,
     file?: Express.Multer.File
-  ): Promise<{ conversation: Conversation; messages: MessageView[] }> {
+  ): Promise<SendResult> {
+    return this.answer(await this.prepareSend(userId, id, question, file));
+  }
+
+  /**
+   * Everything that can reject a message (validation, ownership, learning the file) runs
+   * here, before any reply is generated, so a streaming caller can still answer with a
+   * plain error status.
+   */
+  async prepareSend(
+    userId: number,
+    id: number,
+    question: string | undefined,
+    file?: Express.Multer.File
+  ): Promise<PreparedSend> {
     const text = question?.trim();
     if (!text && !file) {
       throw new AppError("Either message or file is required.", 400);
@@ -74,6 +102,12 @@ export class ConversationService {
 
     if (file) await this.chat.learn(employee, userId, file);
 
+    return { conversation, employee, text, fileName: file?.originalname ?? null };
+  }
+
+  /** Generates EVE's reply (streamed to `onText` when given) and stores the exchange. */
+  async answer({ conversation, employee, text, fileName }: PreparedSend, onText?: (text: string) => void): Promise<SendResult> {
+    const id = conversation.id;
     const history = await Message.findAll({
       where: { conversationId: id },
       attributes: ["role", "content"],
@@ -83,14 +117,15 @@ export class ConversationService {
     const reply = await this.chat.reply(
       employee,
       history.reverse().map(({ role, content }) => ({ role, content })),
-      text
+      text,
+      onText
     );
 
     // Both messages are saved only once there is a reply, so a failed send leaves no
     // half-finished exchange behind and the client can simply retry.
     const messages = await Conversation.sequelize!.transaction(async (transaction) => {
       const sent = await Message.create(
-        { conversationId: id, role: "user", content: text || "Sent a file", fileName: file?.originalname ?? null },
+        { conversationId: id, role: "user", content: text || "Sent a file", fileName },
         { transaction }
       );
       const answer = await Message.create(
@@ -99,7 +134,7 @@ export class ConversationService {
       );
 
       if (conversation.title === DEFAULT_CONVERSATION_TITLE) {
-        conversation.title = ConversationService.titleFrom(text || file!.originalname);
+        conversation.title = ConversationService.titleFrom(text || fileName!);
       }
       // Bumps updatedAt even when the title is unchanged, so the list stays in activity order.
       conversation.changed("updatedAt", true);

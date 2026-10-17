@@ -10,7 +10,9 @@ export class EmployeeController extends BaseController {
   readonly list = asyncHandler(async (req, res) => {
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 12;
-    res.status(200).json(await this.employees.list(page, limit));
+    const search = typeof req.query.search === "string" ? req.query.search : undefined;
+    const departmentId = Number(req.query.departmentId) || undefined;
+    res.status(200).json(await this.employees.list(page, limit, { search, departmentId }));
   });
 
   readonly count = asyncHandler(async (_req, res) => {
@@ -24,6 +26,15 @@ export class EmployeeController extends BaseController {
 
   readonly getById = asyncHandler(async (req, res) => {
     res.status(200).json(await this.employees.getCard(Number(req.params.id)));
+  });
+
+  readonly getSettings = asyncHandler(async (req, res) => {
+    res.status(200).json(await this.employees.getSettings(Number(req.params.id), this.currentUser(req).id));
+  });
+
+  readonly remove = asyncHandler(async (req, res) => {
+    await this.employees.remove(Number(req.params.id), this.currentUser(req).id);
+    res.status(204).end();
   });
 
   readonly create = asyncHandler(async (req, res) => {

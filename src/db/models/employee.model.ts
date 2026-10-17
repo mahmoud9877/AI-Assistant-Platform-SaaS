@@ -14,6 +14,14 @@ export const STATUSES = ["online", "away", "busy", "in meeting"] as const;
 
 export type EmployeeStatus = (typeof STATUSES)[number];
 
+/** How an EVE words its replies. */
+export const TONES = ["professional", "friendly", "formal", "casual", "concise"] as const;
+export type Tone = (typeof TONES)[number];
+
+/** "auto" answers in the language of the question. */
+export const REPLY_LANGUAGES = ["auto", "en", "ar"] as const;
+export type ReplyLanguage = (typeof REPLY_LANGUAGES)[number];
+
 export class Employee extends Model<InferAttributes<Employee>, InferCreationAttributes<Employee>> {
   declare id: CreationOptional<number>;
   declare name: string | null;
@@ -25,6 +33,10 @@ export class Employee extends Model<InferAttributes<Employee>, InferCreationAttr
   /** Loaded when the query includes it (as "department"). */
   declare department?: NonAttribute<Department | null>;
   declare status: CreationOptional<EmployeeStatus>;
+  declare tone: CreationOptional<Tone>;
+  declare replyLanguage: CreationOptional<ReplyLanguage>;
+  /** Extra guidance from the owner, added to the AI prompt. */
+  declare customInstructions: CreationOptional<string | null>;
   declare createdBy: number | null;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
@@ -65,6 +77,20 @@ export class Employee extends Model<InferAttributes<Employee>, InferCreationAttr
         status: {
           type: DataTypes.ENUM(...STATUSES),
           defaultValue: "online",
+        },
+        tone: {
+          type: DataTypes.STRING(20),
+          allowNull: false,
+          defaultValue: "professional",
+        },
+        replyLanguage: {
+          type: DataTypes.STRING(10),
+          allowNull: false,
+          defaultValue: "auto",
+        },
+        customInstructions: {
+          type: DataTypes.TEXT,
+          allowNull: true,
         },
         createdBy: {
           type: DataTypes.INTEGER,

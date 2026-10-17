@@ -22,20 +22,24 @@ export class ChatService {
     await this.knowledge.add(employee, userId, file);
   }
 
-  async reply(employee: Employee, history: ChatTurn[], question: string | undefined): Promise<Reply> {
+  /** EVE's answer; with `onText`, each piece of it is passed on as soon as Cohere writes it. */
+  async reply(
+    employee: Employee,
+    history: ChatTurn[],
+    question: string | undefined,
+    onText?: (text: string) => void
+  ): Promise<Reply> {
     const passages = await this.findPassages(employee, history, question);
     // Still set only when the employee's old single-text knowledge couldn't be migrated yet.
     const legacyKnowledge = employee.knowledgeText;
 
+    const grounding = passages.map((p) => ({ id: String(p.chunkId), title: p.fileName, text: p.content }));
+
     let answer;
     try {
-      answer = await this.ai.ask(
-        employee,
-        history,
-        question,
-        passages.map((p) => ({ id: String(p.chunkId), title: p.fileName, text: p.content })),
-        legacyKnowledge
-      );
+      answer = onText
+        ? await this.ai.askStream(employee, history, question, grounding, legacyKnowledge, onText)
+        : await this.ai.ask(employee, history, question, grounding, legacyKnowledge);
     } catch (err) {
       // Logged in full here; the client only learns that the AI call failed.
       console.error("❌ Chat error:", err);

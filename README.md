@@ -78,6 +78,9 @@ Set these in `config/.env` for local runs (Docker Compose passes them from the r
 | `CORS_ORIGINS` | | Comma-separated allowed origins |
 | `PORT` | | Default `5000` |
 | `API_PATH_PREFIX` | | Public path the API is served under, e.g. `/api` behind Caddy (sets the refresh cookie's path) |
+| `SMTP_URL` | | SMTP server for password-reset emails (`smtp://user:pass@host:587`); unset prints emails to the log |
+| `MAIL_FROM` | | Sender of emails (default `EVE <no-reply@eve.local>`) |
+| `APP_URL` | | Public frontend URL used in email links (default `https://localhost`) |
 | `ADMIN_EMAILS` | | Comma-separated emails of admins, who manage departments |
 | `COOKIE_SAME_SITE` | | `lax`, `strict` or `none` for the refresh cookie (default `none` in production, `lax` otherwise) |
 
@@ -166,3 +169,4 @@ its owner can attach files, which are added to the EVE's knowledge.
 | `PATCH` | `/conversations/:id` | `{ title }` | `{ conversation }` |
 | `DELETE` | `/conversations/:id` | | `204` |
 | `POST` | `/conversations/:id/messages` | multipart `message`, optional `file` (PDF/DOCX, owner only, added to the knowledge) | `{ conversation, messages }` (the sent message and the reply, with `sources`) |
+| `POST` | `/conversations/:id/messages/stream` | same as above | Server-Sent Events: `delta` `{ text }` per piece of the reply, then `done` (same body as above) or `error` `{ message }`. Input and permission errors are plain JSON statuses before the stream starts. |

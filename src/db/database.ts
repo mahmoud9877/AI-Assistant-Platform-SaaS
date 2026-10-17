@@ -7,6 +7,7 @@ import { Conversation } from "./models/conversation.model.js";
 import { Message } from "./models/message.model.js";
 import { KnowledgeChunk } from "./models/knowledge-chunk.model.js";
 import { KnowledgeDocument } from "./models/knowledge-document.model.js";
+import { PasswordReset } from "./models/password-reset.model.js";
 
 export class Database {
   readonly sequelize: Sequelize;
@@ -21,11 +22,13 @@ export class Database {
     Message.initModel(this.sequelize);
     KnowledgeDocument.initModel(this.sequelize);
     KnowledgeChunk.initModel(this.sequelize);
+    PasswordReset.initModel(this.sequelize);
     Employee.associate();
     Conversation.associate();
     Message.associate();
     KnowledgeDocument.associate();
     KnowledgeChunk.associate();
+    PasswordReset.associate();
   }
 
   async connect(): Promise<void> {
@@ -66,6 +69,18 @@ export class Database {
     if (!messageColumns.sources) {
       await queryInterface.addColumn("Messages", "sources", { type: DataTypes.JSON, allowNull: true });
       console.log("✅ Added Messages.sources column");
+    }
+
+    const personality: [string, Parameters<typeof queryInterface.addColumn>[2]][] = [
+      ["tone", { type: DataTypes.STRING(20), allowNull: false, defaultValue: "professional" }],
+      ["replyLanguage", { type: DataTypes.STRING(10), allowNull: false, defaultValue: "auto" }],
+      ["customInstructions", { type: DataTypes.TEXT, allowNull: true }],
+    ];
+    for (const [column, definition] of personality) {
+      if (!columns[column]) {
+        await queryInterface.addColumn("EveEmployees", column, definition);
+        console.log(`✅ Added EveEmployees.${column} column`);
+      }
     }
 
     if (!columns.departmentId) {

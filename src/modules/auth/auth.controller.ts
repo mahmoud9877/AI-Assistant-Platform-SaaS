@@ -31,6 +31,27 @@ export class AuthController extends BaseController {
     res.status(201).json({ message: "Signup successful", userId: user.id });
   });
 
+  readonly forgotPassword = asyncHandler(async (req, res) => {
+    await this.authService.requestPasswordReset(req.body.email);
+    res.status(200).json({ message: "If an account uses this email, a reset link is on its way." });
+  });
+
+  readonly resetPassword = asyncHandler(async (req, res) => {
+    await this.authService.resetPassword(req.body.token, req.body.password);
+    // Every session was revoked; this browser's cookie is now useless too.
+    res.clearCookie(REFRESH_COOKIE, this.cookieOptions);
+    res.status(204).end();
+  });
+
+  readonly changePassword = asyncHandler(async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    this.sendSession(res, await this.authService.changePassword(this.currentUser(req).id, currentPassword, newPassword));
+  });
+
+  readonly updateProfile = asyncHandler(async (req, res) => {
+    res.status(200).json({ user: await this.authService.updateProfile(this.currentUser(req).id, req.body) });
+  });
+
   readonly login = asyncHandler(async (req, res) => {
     this.sendSession(res, await this.authService.login(req.body));
   });

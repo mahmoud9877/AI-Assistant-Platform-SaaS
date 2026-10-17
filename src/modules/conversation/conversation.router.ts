@@ -24,5 +24,11 @@ export class ConversationRouter extends BaseRouter {
       Validator.validate(conversationSchemas.send, ["body", "params"]),
       controller.send
     );
+    r.post(
+      "/:id/messages/stream",
+      upload.document.single("file"),
+      Validator.validate(conversationSchemas.send, ["body", "params"]),
+      controller.sendStream
+    );
   }
 }

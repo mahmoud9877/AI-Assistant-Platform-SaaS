@@ -5,6 +5,7 @@ import type { Config } from "./config/env.js";
 import type { BaseRouter } from "./core/http.js";
 import { TokenService } from "./services/token.service.js";
 import { PasswordHasher } from "./services/password-hasher.js";
+import { Mailer } from "./services/mailer.js";
 import { AuthMiddleware } from "./middleware/auth.middleware.js";
 import { ErrorMiddleware } from "./middleware/error.middleware.js";
 import { UploadMiddleware } from "./middleware/upload.middleware.js";
@@ -46,8 +47,11 @@ export class App {
     const { config } = this;
 
     const tokens = new TokenService(config.tokenSignature);
-    const authService = new AuthService(new PasswordHasher(config.saltRounds), tokens, config.adminEmails);
-    const employeeService = new EmployeeService();
+    const authService = new AuthService(new PasswordHasher(config.saltRounds), tokens, config.adminEmails, {
+      mailer: new Mailer(config.smtpUrl, config.mailFrom),
+      appUrl: config.appUrl,
+    });
+    const employeeService = new EmployeeService(config.isVercel ? undefined : config.uploadsDir);
     const cohere = new CohereService(config.cohereApiKey, config.cohereModel);
     const knowledgeService = new KnowledgeService(employeeService, new DocumentTextExtractor(), cohere);
     const chatService = new ChatService(knowledgeService, cohere);
@@ -62,7 +66,8 @@ export class App {
           isProduction: config.isProduction,
           sameSite: config.cookieSameSite,
           apiPathPrefix: config.apiPathPrefix,
-        })
+        }),
+        auth
       ),
       new DepartmentRouter(new DepartmentController(new DepartmentService()), auth),
       new EmployeeRouter(new EmployeeController(employeeService), auth, upload),

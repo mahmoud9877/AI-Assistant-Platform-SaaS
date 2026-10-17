@@ -16,6 +16,9 @@ export class EmployeeRouter extends BaseRouter {
     r.get("/all", controller.count);
     r.get("/my-employee", controller.listMine);
     r.get("/:id", Validator.validate(employeeSchemas.byId), controller.getById);
+    // Owner only: everything editable about the EVE, including private instructions.
+    r.get("/:id/settings", Validator.validate(employeeSchemas.byId, ["params"]), controller.getSettings);
+    r.delete("/:id", Validator.validate(employeeSchemas.byId, ["params"]), controller.remove);
 
     r.post(
       "/",
