@@ -92,3 +92,10 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  /* The purple page background used on every screen. */
+  .bg-eve {
+    @apply bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-800;
+  }
+}
