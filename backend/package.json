@@ -1,0 +1,45 @@
+{
+  "name": "my-chat-app",
+  "version": "1.0.0",
+  "description": "Chat app using Node.js, Sequelize, and AI integration",
+  "author": "Mahmoud Ali",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.25",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^1.4.13",
+    "@types/node": "^20.19.43",
+    "@types/nodemailer": "^8.0.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cohere-ai": "^7.17.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "joi": "^17.13.3",
+    "jsonwebtoken": "^9.0.2",
+    "mammoth": "^1.9.1",
+    "multer": "^1.4.5-lts.1",
+    "mysql2": "^3.14.1",
+    "nodemailer": "^7.0.13",
+    "pdfjs-dist": "^3.4.120",
+    "sequelize": "^6.37.7"
+  }
+}
